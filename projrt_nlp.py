@@ -21,7 +21,7 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 app = ctk.CTk()
-app.title("🌍 DOMARIN Translate")
+app.title("🌍 Translate")
 app.geometry("1000x720")
 
 # === LANGUES DISPONIBLES ===
