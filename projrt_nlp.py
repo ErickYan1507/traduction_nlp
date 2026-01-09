@@ -10,13 +10,13 @@ import os
 from docx import Document
 import fitz
 from reportlab.pdfgen import canvas
-import threading
+from huggingface_hub import model_info
 
 # === INITIALISATION AUDIO ===
 pygame.mixer.init()
 audio_path = ""
 
-# === CONFIGURATION DE L'APPLICATION ===
+# === CONFIGURATION APP ===
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -33,7 +33,15 @@ langue_cible_codes = {
 }
 langue_cible_var = tk.StringVar(value="Français")
 
-# === TRADUCTION ===
+# === VÉRIFICATION DE DISPONIBILITÉ DU MODÈLE ===
+def modele_existe(model_name):
+    try:
+        model_info(model_name)
+        return True
+    except:
+        return False
+
+# === TRADUCTION MULTILINGUE ===
 def traduire():
     texte = input_text.get("1.0", "end-1c").strip()
     if not texte:
@@ -45,6 +53,12 @@ def traduire():
             texte_traduit = texte
         else:
             model_name = f"Helsinki-NLP/opus-mt-{source_lang}-{cible_lang}"
+            if not modele_existe(model_name):
+                output_text.configure(state="normal")
+                output_text.delete("1.0", "end")
+                output_text.insert("1.0", f"❌ Modèle indisponible pour : {source_lang} → {cible_lang}")
+                output_text.configure(state="disabled")
+                return
             traducteur = pipeline("translation", model=model_name)
             blocs = [texte[i:i+450] for i in range(0, len(texte), 450)]
             texte_traduit = ""
@@ -58,7 +72,7 @@ def traduire():
     output_text.insert("1.0", texte_traduit.strip())
     output_text.configure(state="disabled")
 
-# === IMPORTATION FICHIER ===
+# === IMPORT FICHIER ===
 def importer_fichier():
     fichier = filedialog.askopenfilename(filetypes=[("Text", "*.txt"), ("Word", "*.docx"), ("PDF", "*.pdf")])
     if not fichier:
@@ -83,7 +97,7 @@ def importer_fichier():
     input_text.delete("1.0", "end")
     input_text.insert("1.0", texte)
 
-# === EXPORTATION PDF ===
+# === EXPORT PDF ===
 def exporter_pdf():
     contenu = output_text.get("1.0", "end-1c").strip()
     if not contenu:
@@ -117,7 +131,7 @@ def exporter_pdf():
     except Exception as e:
         messagebox.showerror("Erreur", str(e))
 
-# === LECTURE VOCALE AVEC PYGAME (CORRIGÉ) ===
+# === LECTURE VOCALE ILLIMITÉE AVEC PROTECTION FICHIER ===
 def lire_traduction():
     global audio_path
     texte = output_text.get("1.0", "end-1c").strip()
@@ -126,12 +140,27 @@ def lire_traduction():
         return
     lang_code = langue_cible_codes[langue_cible_var.get()]
     try:
-        tts = gTTS(text=texte, lang=lang_code)
+        blocs = [texte[i:i+5000] for i in range(0, len(texte), 5000)]
         temp_dir = tempfile.gettempdir()
         audio_path = os.path.join(temp_dir, "domarin_temp_audio.mp3")
+
+        # Stopper et décharger l’audio en cours (si existant)
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.stop()
+            pygame.mixer.music.unload()
+
+        # Supprimer ancien fichier si possible
+        if os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+            except Exception as e:
+                messagebox.showerror("Erreur", f"Impossible de supprimer l'ancien audio :\n{str(e)}")
+                return
+
+        tts = gTTS(text=" ".join(blocs), lang=lang_code)
         tts.save(audio_path)
         pygame.mixer.music.load(audio_path)
-        pygame.mixer.music.play()
+        pygame.mixer.music.play(loops=-1)  # Lecture en boucle
     except Exception as e:
         messagebox.showerror("Erreur audio", str(e))
 
@@ -144,9 +173,6 @@ def reprendre_audio():
 
 def stop_audio():
     pygame.mixer.music.stop()
-    global audio_path
-    if audio_path and os.path.exists(audio_path):
-        os.remove(audio_path)
 
 # === INTERFACE UTILISATEUR ===
 titre = ctk.CTkLabel(app, text="🌍 DOMARIN TRANSLATE", font=ctk.CTkFont(size=24, weight="bold"))
@@ -168,12 +194,11 @@ btn_frame.pack(pady=10)
 ctk.CTkButton(btn_frame, text="📂 Importer", command=importer_fichier, width=140).grid(row=0, column=0, padx=5)
 ctk.CTkButton(btn_frame, text="🌍 Traduire", command=traduire, width=140).grid(row=0, column=1, padx=5)
 ctk.CTkButton(btn_frame, text="📄 Exporter PDF", command=exporter_pdf, width=140).grid(row=0, column=2, padx=5)
-
 ctk.CTkButton(btn_frame, text="🔈 Lire", command=lire_traduction, width=140).grid(row=1, column=0, padx=5, pady=5)
 ctk.CTkButton(btn_frame, text="⏸ Pause", command=pause_audio, width=140).grid(row=1, column=1, padx=5, pady=5)
 ctk.CTkButton(btn_frame, text="▶ Reprendre", command=reprendre_audio, width=140).grid(row=1, column=2, padx=5, pady=5)
 ctk.CTkButton(btn_frame, text="⏹ Stop", command=stop_audio, width=140).grid(row=1, column=3, padx=5, pady=5)
 ctk.CTkButton(btn_frame, text="❌ Quitter", command=app.destroy, width=140).grid(row=1, column=4, padx=5, pady=5)
 
-# === DÉMARRER ===
+# === DÉMARRAGE DE L'APPLICATION ===
 app.mainloop()
